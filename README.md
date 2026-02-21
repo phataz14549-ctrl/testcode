@@ -1,40 +1,48 @@
-# Skript Tu Tiên + ImmortalCultivation
+# TuTien Advanced Skript (Full)
 
-Repository này cung cấp một script **Skript chủ đề tu tiên** cho server Minecraft (Spigot/Paper), có thể **kết hợp với plugin ImmortalCultivation** thông qua các command hook.
+Bản này là phiên bản **nâng cấp full** theo yêu cầu, gồm:
 
-## Tính năng
-
-File `skript-plugin/basic_plugin.sk` bao gồm:
-
-- Hệ thống **cảnh giới**: `Phàm Nhân -> Luyện Khí -> Trúc Cơ -> Kim Đan -> Nguyên Anh`
-- Biến **linh lực** theo từng người chơi
-- Lệnh `/tutien thongtin`: xem trạng thái tu luyện
-- Lệnh `/tutien thientoa`: thiền tọa nhận linh lực (có cooldown)
-- Lệnh `/tutien dotpha`: đột phá cảnh giới (tỉ lệ thành công 70%)
-- Lệnh `/tutien dongbo`: đồng bộ tay sang ImmortalCultivation
-
-## Kết hợp với ImmortalCultivation
-
-Trong `options` của script có các dòng:
-
-- `ic-enabled`: bật/tắt tích hợp (`true/false`)
-- `ic-on-join-cmd`: command chạy khi người chơi vào server
-- `ic-on-meditate-cmd`: command chạy khi thiền tọa
-- `ic-on-breakthrough-cmd`: command chạy khi đột phá thành công hoặc đồng bộ tay
-
-Placeholder hỗ trợ trong command hook:
-
-- `%player%`: tên người chơi
-- `%realm%`: cảnh giới
-- `%power%`: linh lực hiện tại
-
-> Lưu ý: mỗi bản ImmortalCultivation có thể khác command. Hãy đổi các dòng `ic-on-...-cmd` cho đúng command plugin bạn đang dùng.
+- Hệ thống tu tiên cốt lõi (`/tutien`, `/dotpha`, thiền tọa, cảnh giới)
+- Tích hợp **ImmortalCultivation** bằng hook command cấu hình được
+- Hệ thống **/tuluyen** ngồi nhập định và cộng linh lực theo chu kỳ
+- Hệ thống **Aura + GUI** (`/aura gui`)
+- Hệ thống **Đạo lữ** (`/marry`, `/divorce`, chat riêng đạo lữ)
+- Lệnh **admin** (`/tutien-admin`, `/tutien-reset`)
+- PlaceholderAPI cho `exp`, `maxexp`, `realm`, `daolu`
 
 ## Cài đặt
 
-1. Cài plugin Skript trên server.
-2. (Khuyến nghị) Cài plugin ImmortalCultivation.
-3. Copy file `skript-plugin/basic_plugin.sk` vào thư mục:
+1. Cài plugin Skript (và addon cần thiết nếu bạn dùng particle nâng cao/nbt/placeholderapi).
+2. (Tuỳ chọn) Cài plugin ImmortalCultivation.
+3. Copy file `skript-plugin/basic_plugin.sk` vào:
    - `plugins/Skript/scripts/`
-4. Reload script bằng lệnh:
+4. Reload:
    - `/sk reload basic_plugin`
+
+## Các lệnh chính
+
+- `/tutien thongtin|thientoa|dotpha|dongbo|top`
+- `/dotpha`
+- `/tuluyen`
+- `/aura gui|smoke|flame|cloud|water|snow|clear`
+- `/marry ask|accept|decline|chat`
+- `/divorce`
+- `/tutien-admin ...` (admin)
+- `/tutien-reset <player>` (admin)
+
+## ImmortalCultivation hook
+
+Trong `options`:
+
+- `ic-enabled`
+- `ic-on-join-cmd`
+- `ic-on-meditate-cmd`
+- `ic-on-breakthrough-cmd`
+
+Placeholder trong command hook:
+
+- `%player%`
+- `%realm%`
+- `%power%`
+
+> Nếu command IC của server bạn khác, chỉ cần sửa 3 dòng `ic-on-...-cmd`.
