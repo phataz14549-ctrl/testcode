@@ -1,0 +1,533 @@
+# =========================================
+# TuTien Advanced Skript (Full)
+# - Core cultivation progression
+# - ImmortalCultivation hook integration
+# - Meditation seat mode
+# - Aura system + GUI
+# - Dao-lu (marry) basic system
+# - Admin controls + placeholders
+# =========================================
+
+options:
+    prefix: &8[&dTu Tiên&8]&r
+
+    # Core pacing
+    meditate-cooldown: 12 seconds
+    dotpha-success-rate: 70
+    actionbar-delay: 10
+
+    # Aura visuals
+    aura-step: 12
+    aura-radius: 1.2
+
+    # ImmortalCultivation hook
+    ic-enabled: true
+    ic-on-join-cmd: "immortalcultivation profile %player%"
+    ic-on-meditate-cmd: "immortalcultivation addexp %player% 10"
+    ic-on-breakthrough-cmd: "immortalcultivation setrealm %player% %realm%"
+
+# ==============================
+# DATA
+# ==============================
+variables:
+    {cultivation.power::%player's uuid%} = 0
+    {cultivation.realm::%player's uuid%} = "Phàm Nhân"
+    {cultivation.last-meditate::%player's uuid%} = 0
+    {cultivation.level::%player's uuid%} = 1
+    {cultivation.max-level::%player's uuid%} = 163
+    {cultivation.req::%player's uuid%} = 150
+
+    {tutien.tuluyen::%player's uuid%} = false
+    {tutien.seat::%player's uuid%} = false
+
+    {aura::%player's uuid%} = "None"
+
+    {marry::%player%::tpallow} = true
+    {marry::%player%::chat} = false
+
+# ==============================
+# UTIL FUNCTIONS
+# ==============================
+function formatNumber2(n: number) :: text:
+    set {_data} to "QT,18|Q,15|T,12|B,9|M,6|k,3"
+    loop split {_data} at "|":
+        set {_s::*} to split loop-value at ","
+        if {_n} >= (10 ^ ({_s::2} parsed as number)):
+            return "%round({_n} / (10 ^ ({_s::2} parsed as number)), 2)%%{_s::1}%"
+    return "%{_n}%"
+
+function realm_requirement(realm: text) :: number:
+    if {_realm} is "Phàm Nhân":
+        return 100
+    if {_realm} is "Luyện Khí":
+        return 300
+    if {_realm} is "Trúc Cơ":
+        return 700
+    if {_realm} is "Kim Đan":
+        return 1500
+    if {_realm} is "Nguyên Anh":
+        return 3200
+    return 999999
+
+function next_realm(realm: text) :: text:
+    if {_realm} is "Phàm Nhân":
+        return "Luyện Khí"
+    if {_realm} is "Luyện Khí":
+        return "Trúc Cơ"
+    if {_realm} is "Trúc Cơ":
+        return "Kim Đan"
+    if {_realm} is "Kim Đan":
+        return "Nguyên Anh"
+    if {_realm} is "Nguyên Anh":
+        return "Hóa Thần"
+    return "Đại Năng"
+
+function ic_exec(template: text, p: player, realm: text, power: number):
+    set {_cmd} to {_template}
+    replace all "%player%" in {_cmd} with "%{_p}%"
+    replace all "%realm%" in {_cmd} with {_realm}
+    replace all "%power%" in {_cmd} with "%{_power}%"
+    execute console command {_cmd}
+
+function aura_set(p: player, aura: text):
+    set {aura::%{_p}'s uuid%} to {_aura}
+    send "{@prefix} &aĐã đổi aura sang &e%{_aura}%&a." to {_p}
+
+# ==============================
+# JOIN / LOAD
+# ==============================
+on first join:
+    set {marry::%player%::tpallow} to true
+    set {marry::%player%::chat} to false
+    delete {marry::%player%::is}
+
+on join:
+    set {marry::%player%::chat} to false
+
+    if {cultivation.realm::%player's uuid%} is not set:
+        set {cultivation.realm::%player's uuid%} to "Phàm Nhân"
+    if {cultivation.power::%player's uuid%} is not set:
+        set {cultivation.power::%player's uuid%} to 0
+    if {cultivation.level::%player's uuid%} is not set:
+        set {cultivation.level::%player's uuid%} to 1
+    if {cultivation.req::%player's uuid%} is not set:
+        set {cultivation.req::%player's uuid%} to 150
+
+    send "{@prefix} &eĐạo hữu &a%player% &eđã nhập thế giới tu tiên!" to player
+    send "{@prefix} &7Cảnh giới: &b%{cultivation.realm::%player's uuid%}% &8| &7Linh lực: &d%{cultivation.power::%player's uuid%}%" to player
+
+    if "{@ic-enabled}" is "true":
+        ic_exec("{@ic-on-join-cmd}", player, {cultivation.realm::%player's uuid%}, {cultivation.power::%player's uuid%})
+
+on chat:
+    if {marry::%player%::chat} is true:
+        cancel event
+        send "&d[Đạo Lữ]&7 <%player%> %message%" to player
+        if {marry::%player%::who} is set:
+            send "&d[Đạo Lữ]&7 <%player%> %message%" to {marry::%player%::who}
+
+# ==============================
+# /TUTIEN CORE
+# ==============================
+command /tutien [<text>]:
+    description: Hệ thống tu tiên nâng cao.
+    usage: /tutien <thongtin|thientoa|dotpha|dongbo|top>
+    permission: tutien.use
+    permission message: "{@prefix} &cBạn chưa có tiên duyên để dùng lệnh này."
+    trigger:
+        if arg-1 is not set or arg-1 is "thongtin":
+            set {_realm} to {cultivation.realm::%player's uuid%}
+            set {_power} to {cultivation.power::%player's uuid%}
+            set {_need} to realm_requirement({_realm})
+            set {_next} to next_realm({_realm})
+            set {_req} to {cultivation.req::%player's uuid%}
+            set {_lv} to {cultivation.level::%player's uuid%}
+
+            send "&8&m-------------------------------------" to player
+            send "{@prefix} &fĐạo hữu: &a%player%" to player
+            send "&7Cảnh giới: &b%{_realm}% &8-> &6%{_next}%" to player
+            send "&7Linh lực: &d%{_power}%&7/&d%{_need}%" to player
+            send "&7Cấp tu vi: &e%{_lv}%&7 | EXP đột phá cấp: &e%formatNumber2({_req})%" to player
+            send "&7Aura: &b%{aura::%player's uuid%}%" to player
+            if {marry::%player%::is} is true:
+                send "&7Đạo lữ: &d%{marry::%player%::who}%" to player
+            else:
+                send "&7Đạo lữ: &8(chưa có)"
+            send "&8&m-------------------------------------" to player
+            stop
+
+        if arg-1 is "thientoa":
+            set {_now} to now
+            set {_last} to {cultivation.last-meditate::%player's uuid%}
+            if difference between {_now} and {_last} < {@meditate-cooldown}:
+                set {_wait} to {@meditate-cooldown} - (difference between {_now} and {_last})
+                send "{@prefix} &cBạn vừa thiền xong, chờ thêm &e%{_wait}%&c." to player
+                stop
+
+            set {cultivation.last-meditate::%player's uuid%} to now
+            set {_gain} to random integer between 25 and 50
+            add {_gain} to {cultivation.power::%player's uuid%}
+            add {_gain} to {cultivation.exp::%player's uuid%}
+            send "{@prefix} &aBạn vận công, nhận &e%{_gain}% &alinh lực." to player
+
+            if "{@ic-enabled}" is "true":
+                ic_exec("{@ic-on-meditate-cmd}", player, {cultivation.realm::%player's uuid%}, {cultivation.power::%player's uuid%})
+            stop
+
+        if arg-1 is "dotpha":
+            execute player command "dotpha"
+            stop
+
+        if arg-1 is "dongbo":
+            if "{@ic-enabled}" is not "true":
+                send "{@prefix} &cTích hợp ImmortalCultivation đang tắt." to player
+                stop
+            ic_exec("{@ic-on-breakthrough-cmd}", player, {cultivation.realm::%player's uuid%}, {cultivation.power::%player's uuid%})
+            send "{@prefix} &aĐã đồng bộ sang ImmortalCultivation." to player
+            stop
+
+        if arg-1 is "top":
+            send "{@prefix} &eTop hiện tại (đơn giản):" to player
+            send "&7- Tu vi của bạn: &d%formatNumber2({cultivation.exp::%player's uuid%})%" to player
+            stop
+
+        send "{@prefix} &eDùng: &f/tutien thongtin&e, &f/tutien thientoa&e, &f/tutien dotpha&e, &f/tutien dongbo&e, &f/tutien top" to player
+
+command /dotpha:
+    permission: tutien.use
+    trigger:
+        set {_realm} to {cultivation.realm::%player's uuid%}
+        set {_power} to {cultivation.power::%player's uuid%}
+        set {_need} to realm_requirement({_realm})
+        set {_next} to next_realm({_realm})
+
+        if {_realm} is "Hóa Thần" or {_realm} is "Đại Năng":
+            send "{@prefix} &dBạn đã đạt đỉnh cao, cần cơ duyên khác để tiến thêm!" to player
+            stop
+
+        if {_power} < {_need}:
+            send "{@prefix} &cLinh lực chưa đủ: &e%{_power}%&c/&e%{_need}%" to player
+            stop
+
+        set {_roll} to random integer between 1 and 100
+        if {_roll} <= {@dotpha-success-rate}:
+            set {cultivation.realm::%player's uuid%} to {_next}
+            remove {_need} from {cultivation.power::%player's uuid%}
+            broadcast "{@prefix} &6%player% &ađã đột phá thành công lên &d%{_next}%&a!"
+            play sound "entity.lightning_bolt.thunder" with volume 1 and pitch 1 at player
+            strike lightning effect at player
+
+            if "{@ic-enabled}" is "true":
+                ic_exec("{@ic-on-breakthrough-cmd}", player, {_next}, {cultivation.power::%player's uuid%})
+        else:
+            set {_loss} to round({_need} / 2)
+            remove {_loss} from {cultivation.power::%player's uuid%}
+            send "{@prefix} &cĐột phá thất bại! Tẩu hỏa nhập ma, mất &e%{_loss}% &clinh lực." to player
+            damage player by 2 hearts
+
+# ==============================
+# TU LUYEN (sit mode)
+# ==============================
+command /tuluyen:
+    permission: tutien.tuluyen
+    trigger:
+        if {tutien.tuluyen::%uuid of player%} is true:
+            delete {tutien.tuluyen::%uuid of player%}
+            delete {tutien.seat::%uuid of player%}
+            if vehicle of player is set:
+                name of vehicle of player is "&eSeat"
+                delete vehicle of player
+            send "{@prefix} &cĐã dừng tu luyện." to player
+            stop
+
+        if player is not on ground:
+            send "{@prefix} &cBạn cần đứng yên trên mặt đất để bắt đầu tu luyện." to player
+            stop
+
+        set {_loc} to location of player
+        set y-coordinate of {_loc} to y-coordinate of {_loc} + 0.3
+        spawn armor stand at {_loc}
+        set {_n} to nbt compound from "{ShowArms:1b,Invisible:1b,Marker:1b,NoBasePlate:1b,Small:1b,Invulnerable:1b,NoAI:1b,NoGravity:1b,OnGround:1b,Silent:1b}"
+        set name of last spawned armor stand to "&eSeat"
+        add {_n} to nbt of last spawned armor stand
+        make player ride last spawned armor stand
+
+        set {tutien.tuluyen::%uuid of player%} to true
+        set {tutien.seat::%uuid of player%} to true
+        send "{@prefix} &aBạn bắt đầu nhập định tu luyện. Dùng /tuluyen lần nữa để thoát." to player
+
+        while {tutien.tuluyen::%uuid of player%} is true:
+            if vehicle of player is not set:
+                delete {tutien.tuluyen::%uuid of player%}
+                delete {tutien.seat::%uuid of player%}
+                stop loop
+
+            set {_gain} to random integer between 20 and 30
+
+            if {marry::%player%::is} is true:
+                set {_dao} to {marry::%player%::who}
+                if {_dao} is online:
+                    if {_dao} is in radius 6 of player:
+                        add 5 to {_gain}
+                        send action bar "&dĐạo lữ ở gần: +5 linh lực" to player
+
+            add {_gain} to {cultivation.power::%uuid of player%}
+            add {_gain} to {cultivation.exp::%uuid of player%}
+            send action bar "&b+%{_gain}% linh lực khi tu luyện" to player
+            wait 7 seconds
+
+on sneak toggle:
+    if vehicle of player is set:
+        if name of vehicle of player is "&eSeat":
+            cancel event
+            send "{@prefix} &eDùng /tuluyen để thoát trạng thái nhập định." to player
+
+on vehicle enter:
+    delete {tutien.tuluyen::%uuid of player%}
+    delete {tutien.seat::%uuid of player%}
+
+# ==============================
+# AURA SYSTEM
+# ==============================
+command /aura [<text>]:
+    permission: tutien.tuluyen
+    trigger:
+        if arg-1 is not set or arg-1 is "gui":
+            set {_gui} to chest inventory with 5 rows named "&bAuras"
+            set slot (numbers from 0 to 44) of {_gui} to black stained glass pane named "&f"
+            set slot 10 of {_gui} to black dye named "&8Smoke Aura"
+            set slot 13 of {_gui} to flint and steel named "&cFlame Aura"
+            set slot 16 of {_gui} to white dye named "&fCloud Aura"
+            set slot 28 of {_gui} to water bucket named "&9Water Aura"
+            set slot 31 of {_gui} to snowball named "&bSnow Aura"
+            set slot 34 of {_gui} to structure void named "&3Clear Aura"
+            open {_gui} to player
+            stop
+
+        if arg-1 is "smoke":
+            if player has permission "aura.smoke":
+                aura_set(player, "Smoke")
+            else:
+                send "{@prefix} &cBạn chưa mở khóa Smoke Aura." to player
+            stop
+
+        if arg-1 is "flame":
+            if player has permission "aura.flame":
+                aura_set(player, "Flame")
+            else:
+                send "{@prefix} &cBạn chưa mở khóa Flame Aura." to player
+            stop
+
+        if arg-1 is "cloud":
+            if player has permission "aura.cloud":
+                aura_set(player, "Cloud")
+            else:
+                send "{@prefix} &cBạn chưa mở khóa Cloud Aura." to player
+            stop
+
+        if arg-1 is "water":
+            if player has permission "aura.water":
+                aura_set(player, "Water")
+            else:
+                send "{@prefix} &cBạn chưa mở khóa Water Aura." to player
+            stop
+
+        if arg-1 is "snow":
+            if player has permission "aura.snow":
+                aura_set(player, "Snow")
+            else:
+                send "{@prefix} &cBạn chưa mở khóa Snow Aura." to player
+            stop
+
+        if arg-1 is "clear" or arg-1 is "remove":
+            set {aura::%player's uuid%} to "None"
+            send "{@prefix} &aĐã tắt aura." to player
+            stop
+
+        send "{@prefix} &eDùng: /aura <gui|smoke|flame|cloud|water|snow|clear>" to player
+
+on tab complete of "/aura":
+    set tab completions for position 1 to "smoke", "flame", "cloud", "water", "snow", "gui", "clear", "remove"
+
+on inventory click:
+    if name of event-inventory is "&bAuras":
+        cancel event
+        if index of event-slot is 10:
+            execute player command "aura smoke"
+        else if index of event-slot is 13:
+            execute player command "aura flame"
+        else if index of event-slot is 16:
+            execute player command "aura cloud"
+        else if index of event-slot is 28:
+            execute player command "aura water"
+        else if index of event-slot is 31:
+            execute player command "aura snow"
+        else if index of event-slot is 34:
+            execute player command "aura clear"
+
+function Aura(p: player):
+    if {aura::%{_p}'s uuid%} is "Smoke":
+        loop 360 / {@aura-step} times:
+            set {_yaw} to loop-number * {@aura-step}
+            set {_v} to spherical vector radius {@aura-radius}, yaw {_yaw}, pitch 0
+            draw 1 of smoke at {_p} ~ {_v} with extra 0 to all players
+
+    else if {aura::%{_p}'s uuid%} is "Flame":
+        loop 360 / {@aura-step} times:
+            set {_yaw} to loop-number * {@aura-step}
+            set {_v} to spherical vector radius 0.7, yaw {_yaw}, pitch 0
+            draw 1 of flame at location 0.3 meters above {_p} ~ {_v} with extra 0 to all players
+
+    else if {aura::%{_p}'s uuid%} is "Cloud":
+        loop 360 / {@aura-step} times:
+            set {_yaw} to loop-number * {@aura-step}
+            set {_v} to spherical vector radius {@aura-radius}, yaw {_yaw}, pitch 0
+            draw 1 of cloud at location 0.3 meters above {_p} ~ {_v} with extra 0 to all players
+
+    else if {aura::%{_p}'s uuid%} is "Water":
+        loop 360 / {@aura-step} times:
+            set {_yaw} to loop-number * {@aura-step}
+            set {_v} to spherical vector radius {@aura-radius}, yaw {_yaw}, pitch 0
+            draw 1 of splash at {_p} ~ {_v} with extra 0 to all players
+
+    else if {aura::%{_p}'s uuid%} is "Snow":
+        loop 360 / {@aura-step} times:
+            set {_yaw} to loop-number * {@aura-step}
+            set {_v} to spherical vector radius {@aura-radius}, yaw {_yaw}, pitch 0
+            draw 1 of snowflake at location 1.3 meters above {_p} ~ {_v} with extra 0 to all players
+
+every {@actionbar-delay} ticks:
+    loop all players:
+        Aura(loop-player)
+        set {_exp} to formatNumber2({cultivation.exp::%uuid of loop-player%})
+        set {_req} to formatNumber2({cultivation.req::%uuid of loop-player%})
+        send action bar "&b♨ Linh khí: &f%{_exp}%&8/&3%{_req}% &8| &dCảnh giới: &f%{cultivation.realm::%uuid of loop-player%}%" to loop-player
+
+# ==============================
+# MARRY / DAO-LU
+# ==============================
+command /marry <text> [<player>]:
+    trigger:
+        if arg-1 is "ask":
+            if {marry::%player%::is} is set:
+                send "{@prefix} &cBạn đã kết đạo lữ rồi." to player
+                stop
+            if arg-2 is not set:
+                send "{@prefix} &cDùng: /marry ask <player>" to player
+                stop
+            if {marry::%arg-2%::is} is set:
+                send "{@prefix} &cNgười này đã có đạo lữ." to player
+                stop
+
+            set {marry::%player%::%arg-2%::ask} to true
+            send "{@prefix} &aBạn đã gửi lời kết đạo lữ đến &e%arg-2%&a." to player
+            send "{@prefix} &e%player% &amuốn kết đạo lữ với bạn. /marry accept %player% hoặc /marry decline %player%" to arg-2
+            wait 1 minute
+            if {marry::%player%::%arg-2%::ask} is set:
+                delete {marry::%player%::%arg-2%::ask}
+                send "{@prefix} &cLời cầu hôn đã hết hạn." to player
+            stop
+
+        if arg-1 is "accept":
+            if arg-2 is not set:
+                send "{@prefix} &cDùng: /marry accept <player>" to player
+                stop
+            if {marry::%arg-2%::%player%::ask} is not set:
+                send "{@prefix} &cKhông có lời cầu hôn phù hợp." to player
+                stop
+
+            set {marry::%player%::who} to arg-2
+            set {marry::%arg-2%::who} to player
+            set {marry::%player%::is} to true
+            set {marry::%arg-2%::is} to true
+            delete {marry::%arg-2%::%player%::ask}
+            broadcast "{@prefix} &d%player% &avà &d%arg-2% &ađã kết thành đạo lữ!"
+            stop
+
+        if arg-1 is "decline":
+            if arg-2 is not set:
+                send "{@prefix} &cDùng: /marry decline <player>" to player
+                stop
+            if {marry::%arg-2%::%player%::ask} is set:
+                delete {marry::%arg-2%::%player%::ask}
+                send "{@prefix} &cBạn đã từ chối lời cầu hôn từ &e%arg-2%&c." to player
+                send "{@prefix} &e%player% &cđã từ chối lời cầu hôn của bạn." to arg-2
+            else:
+                send "{@prefix} &cKhông có lời cầu hôn phù hợp." to player
+            stop
+
+        if arg-1 is "chat":
+            if {marry::%player%::is} is not true:
+                send "{@prefix} &cBạn chưa có đạo lữ." to player
+                stop
+            if {marry::%player%::chat} is true:
+                set {marry::%player%::chat} to false
+                send "{@prefix} &7Đã tắt kênh chat đạo lữ." to player
+            else:
+                set {marry::%player%::chat} to true
+                send "{@prefix} &aĐã bật kênh chat đạo lữ." to player
+            stop
+
+        send "{@prefix} &eDùng: /marry <ask|accept|decline|chat>" to player
+
+command /divorce:
+    trigger:
+        if {marry::%player%::is} is not set:
+            send "{@prefix} &cBạn chưa có đạo lữ." to player
+            stop
+
+        set {_partner} to {marry::%player%::who}
+        delete {marry::%player%::*}
+        delete {marry::%{_partner}%::*}
+        send "{@prefix} &cBạn đã kết thúc quan hệ đạo lữ với &e%{_partner}%&c." to player
+        send "{@prefix} &e%player% &cđã ly duyên với bạn." to {_partner}
+
+# ==============================
+# ADMIN / RESET
+# ==============================
+command /tutien-admin <text> <text> <player> [<number>]:
+    permission: tutien.admin
+    trigger:
+        if arg-1 is "give":
+            if arg-2 is "power":
+                add arg-4 to {cultivation.power::%uuid of arg-3%}
+                send "{@prefix} &a+%arg-4% linh lực cho %arg-3%." to player
+                stop
+            if arg-2 is "exp":
+                add arg-4 to {cultivation.exp::%uuid of arg-3%}
+                send "{@prefix} &a+%arg-4% exp cho %arg-3%." to player
+                stop
+
+        if arg-1 is "set":
+            if arg-2 is "realm":
+                set {cultivation.realm::%uuid of arg-3%} to "%arg-4%"
+                send "{@prefix} &aSet realm của %arg-3% -> %arg-4%." to player
+                stop
+
+        send "{@prefix} &eDùng: /tutien-admin give <power|exp> <player> <số>" to player
+
+command /tutien-reset <player>:
+    permission: tutien.admin
+    trigger:
+        set {cultivation.power::%uuid of arg-1%} to 0
+        set {cultivation.exp::%uuid of arg-1%} to 0
+        set {cultivation.level::%uuid of arg-1%} to 1
+        set {cultivation.req::%uuid of arg-1%} to 150
+        set {cultivation.realm::%uuid of arg-1%} to "Phàm Nhân"
+        send "{@prefix} &aĐã reset tu tiên cho %arg-1%." to player
+
+# ==============================
+# PLACEHOLDERAPI (optional)
+# ==============================
+placeholderapi placeholder with the prefix "tutien":
+    if the identifier is "exp":
+        set the result to "%formatNumber2({cultivation.exp::%uuid of player%})%"
+    if the identifier is "maxexp":
+        set the result to "%formatNumber2({cultivation.req::%uuid of player%})%"
+    if the identifier is "realm":
+        set the result to "%{cultivation.realm::%uuid of player%}%"
+    if the identifier is "daolu":
+        if {marry::%player%::who} is set:
+            set the result to "%{marry::%player%::who}%"
+        else:
+            set the result to "Chưa kết hôn"
