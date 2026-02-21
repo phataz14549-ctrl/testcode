@@ -1,0 +1,157 @@
+# =========================================
+# basic_plugin.sk
+# Skript tu tiên mẫu cho server Minecraft
+# Có hook tích hợp ImmortalCultivation
+# =========================================
+
+options:
+    prefix: &8[&dTu Tiên&8]&r
+    meditate-cooldown: 15 seconds
+
+    # Bật/tắt tích hợp ImmortalCultivation
+    ic-enabled: true
+
+    # Command hook cho ImmortalCultivation (tùy server mà chỉnh lại)
+    # Gợi ý placeholder dùng được trong script này:
+    # - %player%: tên người chơi
+    # - %realm%: cảnh giới mới
+    # - %power%: linh lực hiện tại
+    ic-on-join-cmd: "immortalcultivation profile %player%"
+    ic-on-meditate-cmd: "immortalcultivation addexp %player% 10"
+    ic-on-breakthrough-cmd: "immortalcultivation setrealm %player% %realm%"
+
+# ==============================
+# DỮ LIỆU TU TIÊN
+# ==============================
+variables:
+    {cultivation.power::%player's uuid%} = 0
+    {cultivation.realm::%player's uuid%} = "Phàm Nhân"
+    {cultivation.last-meditate::%player's uuid%} = 0
+
+# ==============================
+# HÀM HỖ TRỢ
+# ==============================
+function realm_requirement(realm: text) :: number:
+    if {_realm} is "Phàm Nhân":
+        return 100
+    if {_realm} is "Luyện Khí":
+        return 300
+    if {_realm} is "Trúc Cơ":
+        return 700
+    if {_realm} is "Kim Đan":
+        return 1500
+    return 999999
+
+function next_realm(realm: text) :: text:
+    if {_realm} is "Phàm Nhân":
+        return "Luyện Khí"
+    if {_realm} is "Luyện Khí":
+        return "Trúc Cơ"
+    if {_realm} is "Trúc Cơ":
+        return "Kim Đan"
+    if {_realm} is "Kim Đan":
+        return "Nguyên Anh"
+    return "Đại Năng"
+
+function ic_exec(template: text, p: player, realm: text, power: number):
+    set {_cmd} to {_template}
+    replace all "%player%" in {_cmd} with "%{_p}%"
+    replace all "%realm%" in {_cmd} with {_realm}
+    replace all "%power%" in {_cmd} with "%{_power}%"
+    execute console command {_cmd}
+
+# ==============================
+# SỰ KIỆN
+# ==============================
+on join:
+    if {cultivation.realm::%player's uuid%} is not set:
+        set {cultivation.realm::%player's uuid%} to "Phàm Nhân"
+    if {cultivation.power::%player's uuid%} is not set:
+        set {cultivation.power::%player's uuid%} to 0
+
+    send "{@prefix} &eĐạo hữu &a%player% &eđã nhập thế giới tu tiên!" to player
+    send "{@prefix} &7Cảnh giới hiện tại: &b%{cultivation.realm::%player's uuid%}%&7 | Linh lực: &d%{cultivation.power::%player's uuid%}%" to player
+
+    if "{@ic-enabled}" is "true":
+        ic_exec("{@ic-on-join-cmd}", player, {cultivation.realm::%player's uuid%}, {cultivation.power::%player's uuid%})
+
+# ==============================
+# LỆNH TU TIÊN
+# ==============================
+command /tutien [<text>]:
+    description: Hệ thống tu tiên cơ bản.
+    usage: /tutien <thongtin|thientoa|dotpha|dongbo>
+    permission: tutien.use
+    permission message: "{@prefix} &cBạn chưa có tiên duyên để dùng lệnh này."
+    trigger:
+        if arg-1 is not set or arg-1 is "thongtin":
+            set {_realm} to {cultivation.realm::%player's uuid%}
+            set {_power} to {cultivation.power::%player's uuid%}
+            set {_need} to realm_requirement({_realm})
+            set {_next} to next_realm({_realm})
+
+            send "&8&m------------------------------" to player
+            send "{@prefix} &fĐạo hữu: &a%player%" to player
+            send "&7Cảnh giới: &b%{_realm}%" to player
+            send "&7Linh lực: &d%{_power}%&7/&d%{_need}%" to player
+            send "&7Mục tiêu đột phá: &6%{_next}%" to player
+            send "&8&m------------------------------" to player
+            stop
+
+        if arg-1 is "thientoa":
+            set {_now} to now
+            set {_last} to {cultivation.last-meditate::%player's uuid%}
+
+            if difference between {_now} and {_last} < {@meditate-cooldown}:
+                set {_wait} to {@meditate-cooldown} - (difference between {_now} and {_last})
+                send "{@prefix} &cBạn vừa thiền xong, hãy ổn định đạo tâm thêm &e%{_wait}%&c." to player
+                stop
+
+            set {cultivation.last-meditate::%player's uuid%} to now
+            set {_gain} to random integer between 20 and 45
+            add {_gain} to {cultivation.power::%player's uuid%}
+            send "{@prefix} &aBạn vận công thiền tọa, nhận &e%{_gain}% &alinh lực." to player
+
+            if "{@ic-enabled}" is "true":
+                ic_exec("{@ic-on-meditate-cmd}", player, {cultivation.realm::%player's uuid%}, {cultivation.power::%player's uuid%})
+            stop
+
+        if arg-1 is "dotpha":
+            set {_realm} to {cultivation.realm::%player's uuid%}
+            set {_power} to {cultivation.power::%player's uuid%}
+            set {_need} to realm_requirement({_realm})
+            set {_next} to next_realm({_realm})
+
+            if {_realm} is "Nguyên Anh" or {_realm} is "Đại Năng":
+                send "{@prefix} &dBạn đã ở cảnh giới cực cao, thiên địa khó dung nạp thêm!" to player
+                stop
+
+            if {_power} < {_need}:
+                send "{@prefix} &cLinh lực chưa đủ để đột phá. Cần &e%{_need}%&c, hiện có &e%{_power}%&c." to player
+                stop
+
+            # Tỉ lệ thành công 70%
+            set {_roll} to random integer between 1 and 100
+            if {_roll} <= 70:
+                set {cultivation.realm::%player's uuid%} to {_next}
+                remove {_need} from {cultivation.power::%player's uuid%}
+                broadcast "{@prefix} &6%player% &ađã đột phá thành công lên cảnh giới &d%{_next}%&a!"
+
+                if "{@ic-enabled}" is "true":
+                    ic_exec("{@ic-on-breakthrough-cmd}", player, {_next}, {cultivation.power::%player's uuid%})
+            else:
+                set {_loss} to round({_need} / 2)
+                remove {_loss} from {cultivation.power::%player's uuid%}
+                send "{@prefix} &cĐột phá thất bại, linh lực phản phệ! Bạn mất một nửa linh lực yêu cầu." to player
+            stop
+
+        if arg-1 is "dongbo":
+            if "{@ic-enabled}" is not "true":
+                send "{@prefix} &cTích hợp ImmortalCultivation đang tắt trong options." to player
+                stop
+
+            ic_exec("{@ic-on-breakthrough-cmd}", player, {cultivation.realm::%player's uuid%}, {cultivation.power::%player's uuid%})
+            send "{@prefix} &aĐã gửi đồng bộ cảnh giới hiện tại sang ImmortalCultivation." to player
+            stop
+
+        send "{@prefix} &eDùng: &f/tutien thongtin&e, &f/tutien thientoa&e, &f/tutien dotpha&e, hoặc &f/tutien dongbo" to player
